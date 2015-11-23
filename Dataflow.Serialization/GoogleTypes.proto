@@ -1,0 +1,60 @@
+﻿syntax = "proto3";
+package google.protobuf;
+option csharp_namespace = "Dataflow.Serialization";
+
+// definitions are mirroring ones in google published .proto files.
+
+message Any
+{
+	optional string type_url = 1;
+	optional bytes value = 2;
+}
+
+// message types to support JSON serialization. 
+
+message Struct 
+{
+	map<string, Value> fields = 1;
+}
+
+enum NullValue { NULL_VALUE = 0; }
+
+message Value 
+{
+	oneof kind 
+	{
+		NullValue Null = 1;
+		double Number = 2;
+		string String = 3;
+		bool Bool = 4;
+		Struct Members = 5;
+		ListValue Elements = 6;
+	// IMHO: google should add int64 option for JSON numerics.
+		sint64 Bigint = 8;
+	}
+}
+
+message ListValue 
+{
+	repeated Value Values = 1;
+}
+
+// special date and time related containers.
+
+message Timestamp 
+{
+// represents seconds of UTC time since Unix epoch 1970-01-01T00:00:00Z. 
+// must be from from 0001-01-01T00:00:00Z to 9999-12-31T23:59:59Z inclusive.
+	int64 seconds = 1;
+// non-negative fractions of a second at nanosecond resolution. Negative second values with fractions must
+// still have non-negative nanos values that count forward in time. Must be from 0 to 999,999,999 inclusive.
+	int32 nanos = 2;
+}
+
+message Duration 
+{
+	int64 seconds = 1;
+	int32 nanos = 2;
+}
+
+// GoogleTypes.proto.

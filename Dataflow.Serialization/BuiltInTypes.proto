@@ -1,0 +1,75 @@
+syntax = "proto3";
+package Dataflow.Serialization;
+import "GoogleTypes.proto";
+
+message JsonValueTest
+{
+	string name = 1;
+	Struct data = 2;
+}
+
+// primitive value types
+
+message BoolValue {	bool Value = 1; }
+
+message BytesValue { bytes Value = 1; }
+
+message CharValue {	char Value = 1; }
+
+message Int32Value { int32 Value = 1; }
+
+message SInt32Value { sint32 Value = 1; }
+
+message UInt32Value { uint32 Value = 1; }
+
+message Int64Value { int64 Value = 1; }
+
+message SInt64Value { sint64 Value = 1; }
+
+message UInt64Value { uint64 Value = 1; }
+
+message DoubleValue { double Value = 1; }
+
+message FloatValue { float Value = 1; }
+
+message StringValue { string Value = 1; }
+
+message DateTimeValue { datetime Value = 1; }
+
+message CurrencyValue {	currency Value = 1; }
+
+message DecimalValue { decimal Value = 1; }
+
+// primitive arrays
+
+//message BoolArray { repeated bool a = 1; }
+
+//message BlobsArray { repeated bytes a = 1; }
+
+//message CharArray { repeated char a = 1; }
+
+//message Int32Array { repeated int32 a = 1; }
+
+//message SInt32Array { repeated sint32 a = 1; }
+
+//message UInt32Array { repeated uint32 a = 1; }
+
+//message Int64Array { repeated int64 a = 1; }
+
+//message SInt64Array { repeated sint64 a = 1; }
+
+//message UInt64Array { repeated sint64 a = 1; }
+
+//message DoubleArray { repeated double a = 1; }
+
+//message FloatArray { repeated float a = 1; }
+
+//message StringArray { repeated string a = 1; }
+
+//message DateArray { repeated datetime a = 1; }
+
+//message CurrencyArray { repeated currency a = 1; }
+
+//message DecimalArray { repeated decimal item = 1; }
+
+// end of built-in types.proto
