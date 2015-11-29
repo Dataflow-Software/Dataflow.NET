@@ -1,0 +1,78 @@
+﻿package Dataflow.Tests;
+
+enum Colors 
+{
+	Red = 1;
+	Green = 2;
+	Blue = 3;
+}
+
+message Int32Value 
+{
+	optional int32 Value = 1;
+}
+
+message Case 
+{
+	optional string Name = 3 [default="abc"];
+}
+
+message OptFields 
+{
+	optional int32 I32 = 1 [default=25];
+	optional int64 I64 = 2;
+	optional string Str = 3;
+	optional bytes Bts = 4;
+	optional bool Bln = 5;
+	optional float Flt = 6;
+	optional currency Cur = 7;
+	optional double Dbl = 8;
+	optional datetime Dat = 9;
+	optional sint32 Si32 = 10;
+	optional sint64 Si64 = 11;
+	optional uint32 Ui32 = 12;
+	optional uint64 Ui64 = 13;
+	optional decimal Dec = 14;
+	optional char Chr = 15;
+	optional Colors Enu = 16;
+	optional fixed32 F32 = 17;
+	optional fixed64 F64 = 18;
+}
+
+message RepFields 
+{
+	repeated int32 I32 = 1;
+	repeated int64 I64 = 2;
+	repeated string Str = 3;
+	repeated bytes Bts = 4;
+	repeated bool Bln = 5;
+	repeated float Flt = 6;
+	repeated currency Cur = 7;
+	repeated double Dbl = 8 [packed=true];
+	repeated datetime Dat = 9;
+	repeated sint32 Si32 = 10 [packed=true];
+	repeated sint64 Si64 = 11;
+	repeated uint32 Ui32 = 12;
+	repeated uint64 Ui64 = 13;
+	repeated decimal Dec = 14;
+	repeated char Chr = 15;
+	repeated Colors Enu = 16 [packed=true];
+	repeated fixed32 F32 = 17;
+	repeated fixed64 F64 = 18;
+}
+
+message Noah 
+{
+	optional OptFields Vals = 1;
+	optional RepFields Reps = 2;
+	repeated OptFields Lots = 3;
+	required string Tags = 4;
+}
+
+//service Test {
+	//rpc Ping( Int32Value ) returns( Int32Value );
+	//rpc Echo( OptFields ) returns( OptFields );
+	//rpc Fill( Int32Value ) returns( Noah );
+//}
+
+// end of file.

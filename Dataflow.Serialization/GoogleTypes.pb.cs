@@ -96,7 +96,7 @@ namespace Dataflow.Serialization
 		public static MessageDescriptor Descriptor { get { return _boot_ds_??_boot_ds(); } }
 		
 		// map map fields = 1;
-		public KeyValueMap<string,Value> Fields { get { var map = new KeyValueMap<string,Value>(); foreach(var kv in _fields.Items) map.Add(kv.sk, (Value)kv.ov); return map; } }
+		public KeyValueMap<string,Value> Fields { get { var map = new KeyValueMap<string,Value>(); foreach(var kv in _fields.Items) map.Add(kv.skey, (Value)kv.ov); return map; } }
 		
 		#region message fields
 		

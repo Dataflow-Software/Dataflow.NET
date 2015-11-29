@@ -217,13 +217,6 @@ namespace Dataflow.Serialization
             for (var i = _indent; i > 0; i--) Append('\t');
             return this;
         }
-        public TextBuilder Label(char px, int id, bool jump)
-        {
-            if (jump) Append("goto ").Append(px);
-            else { _indent--; NewLine().Space().Space().Append(px); _indent++; }
-            for (var k = id == 0 ? 1 : id; k < 1000; k = k * 10) Append('0');
-            return Append(id).Append(jump ? ';' : ':');
-        }
         public TextBuilder NewLine(string s, string s1) { return NewLine(s).Append(s1); }
         public TextBuilder NewLine(string s, string s1, string s2) { return NewLine(s).Append(s1).Append(s2); }
         public TextBuilder NewLine(params string[] ps) { return NewLine().Append(ps); }
@@ -864,19 +857,28 @@ namespace Dataflow.Serialization
             _cp += 8;
         }
 
-        public void WriteLongAL(long i)
+        public void WriteLongAL(long i, bool quote_longs = true)
         {
-            // takes up to 8 chars in string format.
-            const int billion = 100000000;
+            // for JSON encoding anything above 2^52 must be string encoded to preserve precision on roundtrip.
+            const int num_bits = 52, billion = 1000000000;
+            var sign = false;
             if (i < 0)
             {
-                WriteByte((byte)'-');
+                sign = true;
                 i = -i;
             }
-            if (i < billion)
+
+            if ((i >> 31) != 0)
+            {
+                if (sign) WriteByte((byte)'-');
                 WriteIntAL((int)i);
+            }
             else
             {
+                if (quote_longs && (i >> num_bits) != 0)
+                    WriteByte((byte)'"');
+                if (sign) WriteByte((byte)'-');
+
                 long i2 = i / billion;
                 i -= i2 * billion;
                 if (i2 < billion)
@@ -889,6 +891,8 @@ namespace Dataflow.Serialization
                     WriteIntAL8((int)i2);
                 }
                 WriteIntAL8((int)i);
+                if (quote_longs && (i >> num_bits) != 0)
+                    WriteByte((byte)'"');
             }
         }
 
@@ -990,6 +994,30 @@ namespace Dataflow.Serialization
             var bt = new byte[sz];
             Buffer.BlockCopy(_db, _bp, bt, 0, sz);
             return bt;
+        }
+
+        public void ToStream(Stream stream)
+        {
+            var sz = _cp - _bp;
+            if (sz == 0) return;
+            if (dts != null && dts.ContentSize > 0)
+            {
+                Flush();
+                dts.ToStream(stream);
+            }
+            else stream.Write(_db, 0, sz);
+        }
+
+        public override string ToString()
+        {
+            var sz = _cp - _bp;
+            if (sz == 0) return null;
+            if (dts != null && dts.ContentSize > 0)
+            {
+                Flush();
+                return dts.ToString();
+            }
+            return Encoding.UTF8.GetString(_db, 0, sz);
         }
     }
 

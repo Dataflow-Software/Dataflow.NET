@@ -9,7 +9,8 @@ namespace Dataflow.Serialization
 
     public partial class Struct
     {
-        internal MapEntry[] _getFields() { return _fields.Items; }
+        internal MapEntry[] _get_fields() { return _fields.Items; }
+
         public Struct AddMember(string key, long value) { return AddFields(key, new Value { Bigint = value }); }
         public Struct AddMember(string key, double value) { return AddFields(key, new Value { Number = value }); }
         public Struct AddMember(string key, string value) { return AddFields(key, new Value { String = value }); }
@@ -26,11 +27,14 @@ namespace Dataflow.Serialization
         String = 7, Number = 8, Int = 9, True = 10, False = 11, Null = 12
     }
 
-    // Implements StreamReader that extracts messages from a byte streams or strings encoded in the JSON format.
-    public class JSStreamReader : MessageDeserializer, IDataReader
+    //
+    // extracts messages from JSON format.
+    //
+    public class JSDataReader : IDataReader
     {
         private const int iCharBufSz = 128;
 
+        private StorageReader _storage;
         private JsToken _tlast;
         private int _cp, _sp;
 
@@ -43,14 +47,25 @@ namespace Dataflow.Serialization
         private string _last_name;
         private string _sdata;
 
-        public JSStreamReader(DataStorage ds) : base(new StorageReader(ds)) { }
-        public JSStreamReader(byte[] dt, int pos, int size) : base(new StorageReader(dt, pos, size)) { }
-        public JSStreamReader(string dt, int pos, int size) : base(null) { _sdb = dt; }
+        public JSDataReader(DataStorage ds)
+        {
+            _storage = new StorageReader(ds);
+        }
+
+        public JSDataReader(byte[] dt, int pos, int size)
+        {
+            _storage = new StorageReader(dt, pos, size);
+        }
+
+        public JSDataReader(string dt, int pos, int size)
+        {
+            _sdb = dt;
+        }
 
         // reads message content in JSON format from the current position.
-        public override void Read(Message msg, int size = 0)
+        public void Read(Message msg)
         {
-            if (_dc == null) _dc = new char[iCharBufSz];
+            _dc = new char[iCharBufSz];
             _cc = GetNextCharJs();
             _tlast = Next();
             AsMessage(msg, msg.GetDescriptor());
@@ -181,7 +196,7 @@ namespace Dataflow.Serialization
 
         private string AtString()
         {
-            return _sdata != null ? _sdata : (_cp > 0 ? new string(_dc, 0, _cp) : null);
+            return _sdata ?? (_cp > 0 ? new string(_dc, 0, _cp) : null);
         }
 
         private long GetLongJs()
@@ -251,9 +266,9 @@ namespace Dataflow.Serialization
 
         #region IDataReader implementation
 
-        long IDataReader.AsBit64() { return GetLongJs(); }
+        public override long AsBit64() { return GetLongJs(); }
 
-        bool IDataReader.AsBool()
+        public override bool AsBool()
         {
             if (_tlast == JsToken.True) return true;
             if (_tlast != JsToken.False)
@@ -261,22 +276,22 @@ namespace Dataflow.Serialization
             return false;
         }
 
-        byte[] IDataReader.AsBytes()
+        public override byte[] AsBytes()
         {
             return Convert.FromBase64String(_sdata);
         }
 
-        char IDataReader.AsChar()
+        public override char AsChar()
         {
             return _sdata != null ? _sdata[0] : (char)0;
         }
 
-        Currency IDataReader.AsCurrency()
+        public override Currency AsCurrency()
         {
             return GetCurrencyJs();
         }
 
-        DateTime IDataReader.AsDate()
+        public override DateTime AsDate()
         {
             var sz = _sdata.Length;
             if (sz < 20) throw new JsonException("incorrect date format");
@@ -285,39 +300,34 @@ namespace Dataflow.Serialization
             return dt.ToLocalTime();
         }
 
-        Decimal IDataReader.AsDecimal()
-        {
-            return Decimal.Parse(AtString());
-        }
-
-        double IDataReader.AsDouble()
+        public override double AsDouble()
         {
             return double.Parse(AtString(), System.Globalization.NumberStyles.Float);
         }
 
-        int IDataReader.AsEnum(EnumDescriptor es)
+        public override int AsEnum(EnumDescriptor es)
         {
             var ds = es.Find(AtString());
             if (ds == null) Expected("enum value");
             return ds.Id;
         }
 
-        float IDataReader.AsFloat()
+        public override float AsFloat()
         {
             return float.Parse(AtString(), System.Globalization.NumberStyles.Float);
         }
 
-        int IDataReader.AsInt()
+        public override int AsInt()
         {
             return (int)GetLongJs();
         }
 
-        long IDataReader.AsLong()
+        public override long AsLong()
         {
             return GetLongJs();
         }
 
-        string IDataReader.AsString()
+        public override string AsString()
         {
             return _sdata;
         }
@@ -335,11 +345,11 @@ namespace Dataflow.Serialization
             }
         }
 
-        int IDataReader.AsBit32() { return (int)GetLongJs(); }
-        int IDataReader.AsSi32() { return (int)GetLongJs(); }
-        long IDataReader.AsSi64() { return GetLongJs(); }
+        public override int AsBit32() { return (int)GetLongJs(); }
+        public override int AsSi32() { return (int)GetLongJs(); }
+        public override long AsSi64() { return GetLongJs(); }
 
-        void IDataReader.AsMessage(Message msg, FieldDescriptor fs)
+        public override void AsMessage(Message msg, FieldDescriptor fs)
         {
             AsMessage(msg, fs.MessageType);
         }
@@ -414,8 +424,8 @@ namespace Dataflow.Serialization
                 var kmap = msg as MapEntry;
                 var fs = ci.Fields;
                 // set map entry key and value.
-                if (fs[0].DataType == WireType.String) kmap.sk = _last_name;
-                else if (!long.TryParse(_last_name, out kmap.lk)) Expected("ordinal key value");
+                if (fs[0].DataType == WireType.String) kmap.skey = _last_name;
+                else { long lk = 0; if (long.TryParse(_last_name, out lk)) kmap.lkey = lk; else Expected("ordinal key value"); }
                 var fi = fs[1];
                 kmap.Get(fs[1], this);
             }
@@ -479,23 +489,23 @@ namespace Dataflow.Serialization
         }
     }
 
-    // writes PB-message into JSON format.
-    public class JSStreamWriter : MessageSerializer, IDataWriter
+    //
+    // serialize messages into JSON format.
+    //
+    public class JSDataWriter : IDataWriter
     {
-        private const int iDecorate = 1;
-        private int _nestlvl, _fieldPos, _options;
+        private StorageWriter _storage;
+        private int _nestlvl, _fieldPos;
 
-        protected bool Decorate { get { return (_options | iDecorate) != 0; } }
+        protected bool Decorate { get; private set; }
+        public StorageWriter Storage { get { return _storage; } }
+        public JSDataWriter(StorageWriter sw, bool decorate = false) { _storage = sw; Decorate = decorate; }
 
-        public JSStreamWriter(DataStorage dts, bool decorate = false)
-            : base(dts, 0)
-        {
-            if (decorate) _options |= iDecorate;
-        }
+        public void Flush() { _storage.Flush(); }
 
         #region JSON streaming data helpers.
 
-        private JSStreamWriter RollComma(ref bool separate)
+        private JSDataWriter RollComma(ref bool separate)
         {
             if (separate)
                 _storage.WriteByte((byte)',');
@@ -527,13 +537,11 @@ namespace Dataflow.Serialization
 
         private StorageWriter PutPrefix(FieldDescriptor fi)
         {
-            if (!fi.IsBoxed)
-            {
-                if (_fieldPos++ > 0) WriteComma();
-                if (Decorate) PutDecor();
-                PutString(fi.Name);
-                WriteSemic();
-            }
+            // was "if (fi.IsBoxed) {", now JSON Value carries that burden :).
+            if (_fieldPos++ > 0) WriteComma();
+            if (Decorate) PutDecor();
+             PutString(fi.Name);
+            WriteSemic();
             return _storage;
         }
 
@@ -568,8 +576,9 @@ namespace Dataflow.Serialization
         private void PutMapEntry(MapEntry item)
         {
             WriteQuote();
-            if (item.sk != null) _storage.WriteString(item.sk);
-            else _storage.WriteLongAL(item.lk);
+            if (item.skey != null)
+                _storage.WriteString(item.skey);
+            else _storage.WriteLongAL(item.lkey);
             WriteQuote();
             WriteSemic();
             item.PutValue(this);
@@ -602,10 +611,10 @@ namespace Dataflow.Serialization
         {
             var comma = false;
             WriteChar('{');
-            foreach (var dtk in data._getFields())
+            foreach (var dtk in data._get_fields())
             {
                 if (comma) WriteComma(); else comma = true;
-                PutString(dtk.sk);
+                PutString(dtk.skey);
                 WriteSemic();
                 var dtx = dtk.ov as Value;
                 if (dtx != null) PutValueJs(dtx);
@@ -623,7 +632,7 @@ namespace Dataflow.Serialization
             else { } 
         }
 
-        protected sealed override void AppendMessage(Message msg, MessageDescriptor ci)
+        public JSDataWriter AppendMessage(Message msg, MessageDescriptor ci)
         {
             // special cases may require custom JSON formatting.
             if (ci.HasOptions)
@@ -631,7 +640,7 @@ namespace Dataflow.Serialization
                 if (ci.IsGoogleType) PutGoogleType(msg);
                 else if (ci.IsKvMap) PutMapEntry(msg as MapEntry);
                 else msg.Put(this);
-                return;
+                return this;
             }
 
             // standard JSON object serialization.
@@ -643,6 +652,7 @@ namespace Dataflow.Serialization
             _nestlvl--;
             if (Decorate) PutDecor();
             WriteChar('}');
+            return this;
         }
 
         private void WriteStringA(string s) { _storage.WriteStringA(s); }
@@ -655,7 +665,7 @@ namespace Dataflow.Serialization
 
         #region IDataWriter implementation
 
-        void IDataWriter.AsRepeated(FieldDescriptor fs, Array data)
+        public override void AsRepeated(FieldDescriptor fs, Array data)
         {
             PutPrefix(fs);
             PutRepeated(fs, data);
@@ -722,9 +732,6 @@ namespace Dataflow.Serialization
                 case WireType.Date:
                     foreach (var dt in data as DateTime[]) RollComma(ref separate).PutDate(dt);
                     break;
-                case WireType.Decimal:
-                    foreach (var dc in data as Decimal[]) RollComma(ref separate).WriteStringA(dc.ToString());
-                    break;
                 case WireType.Double:
                     foreach (var da in data as double[]) RollComma(ref separate).WriteStringA(da.ToString("R"));
                     break;
@@ -752,31 +759,30 @@ namespace Dataflow.Serialization
             WriteChar(']');
         }
 
-        void IDataWriter.AsBit32(FieldDescriptor fs, int i)
+        public override void AsBit32(FieldDescriptor fs, int i)
         {
             PutPrefix(fs).WriteIntAL(i);
         }
 
-        void IDataWriter.AsBit64(FieldDescriptor fs, long l)
+        public override void AsBit64(FieldDescriptor fs, long l)
         {
             PutPrefix(fs).WriteLongAL(l);
         }
 
-        void IDataWriter.AsBool(FieldDescriptor fs, bool b)
+        public override void AsBool(FieldDescriptor fs, bool b)
         {
             PutPrefix(fs).WriteStringA(b ? "true" : "false");
         }
 
-        void IDataWriter.AsBytes(FieldDescriptor fs, byte[] bt)
+        public override void AsBytes(FieldDescriptor fs, byte[] bt)
         {
-            if (bt == null) return;
             PutPrefix(fs);
             WriteQuote();
             _storage.WriteBase64String(bt, 0, bt.Length);
             WriteQuote();
         }
 
-        void IDataWriter.AsChar(FieldDescriptor fs, char ch)
+        public override void AsChar(FieldDescriptor fs, char ch)
         {
             PutPrefix(fs);
             WriteQuote();
@@ -784,29 +790,24 @@ namespace Dataflow.Serialization
             WriteQuote();
         }
 
-        void IDataWriter.AsCurrency(FieldDescriptor fs, Currency cy)
+        public override void AsCurrency(FieldDescriptor fs, Currency cy)
         {
             PutPrefix(fs);
             PutCurrency(cy);
         }
 
-        void IDataWriter.AsDate(FieldDescriptor fs, DateTime dt)
+        public override void AsDate(FieldDescriptor fs, DateTime dt)
         {
             PutPrefix(fs);
             PutDate(dt);
         }
 
-        void IDataWriter.AsDecimal(FieldDescriptor fs, decimal d)
-        {
-            PutPrefix(fs).WriteStringA(d.ToString());
-        }
-
-        void IDataWriter.AsDouble(FieldDescriptor fs, double d)
+        public override void AsDouble(FieldDescriptor fs, double d)
         {
             PutPrefix(fs).WriteStringA(d.ToString("R"));
         }
 
-        void IDataWriter.AsEnum(FieldDescriptor fs, int e)
+        public override void AsEnum(FieldDescriptor fs, int e)
         {
             var eds = (EnumDescriptor)fs.MessageType;
             var ds = eds.GetById(e);
@@ -815,44 +816,44 @@ namespace Dataflow.Serialization
             PutString(ds.Name);
         }
 
-        void IDataWriter.AsFloat(FieldDescriptor fs, float f)
+        public override void AsFloat(FieldDescriptor fs, float f)
         {
             PutPrefix(fs).WriteStringA(f.ToString("R"));
         }
 
-        void IDataWriter.AsInt(FieldDescriptor fs, int i)
+        public override void AsInt(FieldDescriptor fs, int i)
         {
             PutPrefix(fs).WriteIntAL(i);
         }
 
-        void IDataWriter.AsLong(FieldDescriptor fs, long i)
+        public override void AsLong(FieldDescriptor fs, long i)
         {
             PutPrefix(fs).WriteLongAL(i);
         }
 
-        void IDataWriter.AsSi32(FieldDescriptor fs, int i)
+        public override void AsSi32(FieldDescriptor fs, int i)
         {
             PutPrefix(fs).WriteIntAL(i);
         }
 
-        void IDataWriter.AsSi64(FieldDescriptor fs, long l)
+        public override void AsSi64(FieldDescriptor fs, long l)
         {
             PutPrefix(fs).WriteLongAL(l);
         }
 
-        void IDataWriter.AsString(FieldDescriptor fs, string s)
+        public override void AsString(FieldDescriptor fs, string s)
         {
-            if (s == null) return;
             PutPrefix(fs);
             PutString(s);
         }
 
-        void IDataWriter.AsMessage(FieldDescriptor fs, Message msg)
+        public override void AsMessage(FieldDescriptor fs, Message msg)
         {
-            if (msg == null) return;
             PutPrefix(fs);
             AppendMessage(msg, fs.MessageType);
         }
+
+        public override void IsNull(FieldDescriptor fs) { }
 
         #endregion
     }

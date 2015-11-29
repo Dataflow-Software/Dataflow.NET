@@ -16,18 +16,26 @@ namespace Dataflow.Serialization
     /// Reads messages from a byte stream in the Google Protocol Buffers format.
     /// </summary>
 
-    public sealed class PBStreamReader : MessageDeserializer, IDataReader
+    public sealed class PBDataReader : IDataReader
     {
         private const int MaxNestLevel = 80, MaxBlobSize = 0x800000; // +8M
+        private StorageReader _storage;
         private int _wirefmt;     // wire format for current field 
         private int _level, _fsz; // current field byte size and nesting level
         private long _data;       // current field value for non-RLE types 
 
-        public PBStreamReader(DataStorage ds) : base(new StorageReader(ds)) { }
-        public PBStreamReader(byte[] bt, int pos, int size) : base(new StorageReader(bt, pos, size)) { }
+        public PBDataReader(DataStorage ds)
+        {
+            _storage = new StorageReader(ds);
+        }
+
+        public PBDataReader(byte[] bt, int pos, int size)
+        {
+            _storage = new StorageReader(bt, pos, size);
+        }
 
         // reads message content from Google Protocol Buffers stream.
-        public override void Read(Message msg, int size = 0)
+        public void Read(Message msg, int size)
         {
             if (size > 0)
             {
@@ -41,7 +49,7 @@ namespace Dataflow.Serialization
                     throw new ProtoBufException("incomplete message data");
             }
             else if (size < 0) 
-                throw new ArgumentException("size");
+                throw new ArgumentException("message size");
         }
 
         private long FormatError(int wt) 
@@ -56,7 +64,7 @@ namespace Dataflow.Serialization
             return _wirefmt == Pbs.iVarInt ? _data : FormatError(Pbs.iVarInt);
         }
 
-        private long GetFixInt(int expected)
+        private long GetBits64(int expected)
         {
             return _wirefmt == expected ? _data : FormatError(expected);
         }
@@ -99,22 +107,22 @@ namespace Dataflow.Serialization
 
         #region DataReader interface implementation.
 
-        int IDataReader.AsBit32()
+        public override int AsBit32()
         {
-            return (int)GetFixInt(Pbs.iBit32);
-        }
-        
-        long IDataReader.AsBit64()
-        {
-            return GetFixInt(Pbs.iBit64);
+            return (int)GetBits64(Pbs.iBit32);
         }
 
-        bool IDataReader.AsBool()
+        public override long AsBit64()
+        {
+            return GetBits64(Pbs.iBit64);
+        }
+
+        public override bool AsBool()
         {
             return GetVarInt() != 0;
         }
 
-        byte[] IDataReader.AsBytes()
+        public override byte[] AsBytes()
         {
             if (_wirefmt == Pbs.iString)
             {
@@ -127,66 +135,51 @@ namespace Dataflow.Serialization
             return null;
         }
 
-        char IDataReader.AsChar()
+        public override char AsChar()
         {
             return (char)GetVarInt();
         }
 
-        Currency IDataReader.AsCurrency()
+        public override Currency AsCurrency()
         {
             return new Currency(GetVarInt());
         }
 
-        DateTime IDataReader.AsDate()
+        public override DateTime AsDate()
         {
             // using signed int encoding for date ticks encoding.
             var i = GetVarInt();
             return Pbs.DateFromMsecs((i >> 1) ^ -(i & 1));
         }
 
-        Decimal IDataReader.AsDecimal()
+        public override double AsDouble()
         {
-            if (_wirefmt != Pbs.iString)
-                FormatError(Pbs.iString);
-            if (_fsz == 0) return Decimal.Zero;
-            var pos = _storage.Limit;
-            var lo = _storage.GetIntPB();
-            var mid = _storage.GetLongPB();
-            var ext = _storage.GetIntPB();
-            if (pos - _storage.Limit != _fsz) throw new ProtoBufException("decimal encoding");
-            _fsz = 0;
-            var dec = new decimal(lo, (int)mid, (int)(mid >> 32), (ext & 1) != 0, (byte)(ext >> 1));
-            return dec;
+            return Pbs.SetDoubleBits(GetBits64(Pbs.iBit64));
         }
 
-        double IDataReader.AsDouble()
-        {
-            return Pbs.SetDoubleBits(GetFixInt(Pbs.iBit64));
-        }
-
-        int IDataReader.AsEnum(EnumDescriptor es)
+        public override int AsEnum(EnumDescriptor es)
         {
             var ev = (int)GetVarInt();
             // todo: should we check if it is valid enum value.
             return ev;
         }
 
-        float IDataReader.AsFloat()
+        public override float AsFloat()
         {
-            return Pbs.SetFloatBits((int)GetFixInt(Pbs.iBit32));
+            return Pbs.SetFloatBits((int)GetBits64(Pbs.iBit32));
         }
 
-        int IDataReader.AsInt()
+        public override int AsInt()
         {
             return (int)GetVarInt();
         }
 
-        long IDataReader.AsLong()
+        public override long AsLong()
         {
             return GetVarInt();
         }
 
-        void IDataReader.AsMessage(Message message, FieldDescriptor fs)
+        public override void AsMessage(Message message, FieldDescriptor fs)
         {
             if (_wirefmt == Pbs.iString)
             {
@@ -198,7 +191,7 @@ namespace Dataflow.Serialization
             else FormatError(Pbs.iString);
         }
 
-        string IDataReader.AsString()
+        public override string AsString()
         {
             if (_wirefmt != Pbs.iString) 
                 FormatError(Pbs.iString);
@@ -211,13 +204,13 @@ namespace Dataflow.Serialization
             return s;
         }
 
-        int IDataReader.AsSi32()
+        public override int AsSi32()
         {
             var i = (int)GetVarInt();
             return (i >> 1) ^ -(i & 1);
         }
 
-        long IDataReader.AsSi64()
+        public override long AsSi64()
         {
             var i = GetVarInt();
             return (i >> 1) ^ -(i & 1);
@@ -242,7 +235,7 @@ namespace Dataflow.Serialization
 
         public void TryReadPacked(FieldDescriptor fs, Message msg)
         {
-            // since 2.3 PB deserializers are supposed to read both packed and unpacked automatically.
+            // since 2.3 PB deserializers are supposed to read both packed and unpacked.
             var wireFmt = fs.Id & 0x7;
             if (_wirefmt == Pbs.iString)
                 _wirefmt = wireFmt;
@@ -267,17 +260,20 @@ namespace Dataflow.Serialization
     /// <summary>
     /// Writes messages to a stream in the Google Protocol Buffers encoding.
     /// </summary>
-    public class PBStreamWriter : MessageSerializer, IDataWriter
+    public class PBDataWriter : IDataWriter
     {
-        public PBStreamWriter(byte[] bt, int pos, int count) : base(bt, pos, count) {}
-        public PBStreamWriter(DataStorage ds, int estimate = 0) : base(ds, estimate) { }
+        private StorageWriter _storage;
+        public StorageWriter Storage { get { return _storage; } } 
+        public PBDataWriter(StorageWriter sw) { _storage = sw; }
+        public PBDataWriter(byte[] bts, int pos, int count) { _storage = new StorageWriter(bts, pos, count); }
 
-        protected sealed override void AppendMessage(Message message, MessageDescriptor ci)
+        public PBDataWriter AppendMessage(Message message, MessageDescriptor ci)
         {
             // force recalc on _memoized_size to guarantee up-to-date value.
             message.GetSerializedSize();
             // serialize message fields.
             message.Put(this);
+            return this;
         }
 
         #region DataWriter interface implementation
@@ -299,36 +295,17 @@ namespace Dataflow.Serialization
             _storage.WriteLongPB((l << 1) ^ (l >> 63));
         }
 
-        private void WriteDecimal(Decimal dc)
-        {
-            var di = Decimal.GetBits(dc);
-            var sz = Pbs.dec2(di);
-            if (sz == 1)
-            {
-                _storage.WriteByte(0);
-                return;
-            }
-            _storage.WriteIntPB(sz - 1, di[0]);
-            var li = (long)di[2]; li = (li << 32) | (uint)di[1];
-            _storage.WriteLongPB(li);
-            var sg = (sz = di[3]) < 0 ? 1 : 0;
-            _storage.WriteIntPB(sg | ((byte)(sz >> 16) << 1));
-        }
-
         private void WriteMessage(FieldDescriptor fs, Message msg)
         {
             if (msg == null) return;
-            _storage.WriteIntPB(fs.Id, msg.ByteSize);
+            _storage.WriteIntPB(fs.Id, msg.SerializedSize);
             msg.Put(this);
         }
 
         private void WriteString(FieldDescriptor fs, string s)
         {
-            if (s != null)
-            {
-                _storage.WriteIntPB(fs.Id, Pbs.GetUtf8ByteSize(s));
-                _storage.WriteString(s);
-            }
+            _storage.WriteIntPB(fs.Id, Pbs.GetUtf8ByteSize(s));
+            _storage.WriteString(s);
         }
 
         private void AsRepeatedPacked(FieldDescriptor fs, Array data)
@@ -462,9 +439,6 @@ namespace Dataflow.Serialization
                 case WireType.Date:
                     foreach (var x in data as DateTime[]) writer.AsDate(fs, x);
                     break;
-                case WireType.Decimal:
-                    foreach (var x in data as Decimal[]) writer.AsDecimal(fs, x);
-                    break;
                 case WireType.Double:
                     foreach (var x in data as double[]) writer.AsDouble(fs, x);
                     break;
@@ -488,7 +462,7 @@ namespace Dataflow.Serialization
             }
         }
 
-        void IDataWriter.AsRepeated(FieldDescriptor fs, Array data)
+        public override void AsRepeated(FieldDescriptor fs, Array data)
         {
             try
             {
@@ -503,22 +477,22 @@ namespace Dataflow.Serialization
             }
         }
 
-        void IDataWriter.AsBit32(FieldDescriptor fs, int i)
+        public override void AsBit32(FieldDescriptor fs, int i)
         {
             _storage.WriteIntPB(fs.Id);
             _storage.WriteB32((uint)i);
         }
 
-        void IDataWriter.AsBit64(FieldDescriptor fs, long l)
+        public override void AsBit64(FieldDescriptor fs, long l)
         {
             _storage.WriteIntPB(fs.Id);
             _storage.WriteB64((ulong)l);
         }
 
-        void IDataWriter.AsBool(FieldDescriptor fs, bool b) { WriteInt( fs, b ? 1 : 0); }
-        void IDataWriter.AsChar(FieldDescriptor fs, char ch) { WriteInt(fs, ch); }
+        public override void AsBool(FieldDescriptor fs, bool b) { WriteInt( fs, b ? 1 : 0); }
+        public override void AsChar(FieldDescriptor fs, char ch) { WriteInt(fs, ch); }
 
-        void IDataWriter.AsBytes(FieldDescriptor fs, byte[] bs)
+        public override void AsBytes(FieldDescriptor fs, byte[] bs)
         {
             if (bs == null) return;
             _storage.WriteIntPB(fs.Id);
@@ -527,40 +501,54 @@ namespace Dataflow.Serialization
             if (sz != 0) _storage.WriteBytes(sz, bs);
         }
 
-        void IDataWriter.AsCurrency(FieldDescriptor fs, Currency dc) { WriteLong(fs, dc.Value); }
+        public override void AsCurrency(FieldDescriptor fs, Currency dc)
+        {
+            WriteLong(fs, dc.Value);
+        }
 
-        void IDataWriter.AsDate(FieldDescriptor fs, DateTime dt)
+        public override void AsDate(FieldDescriptor fs, DateTime dt)
         {
             _storage.WriteIntPB(fs.Id);
             WriteDate(dt);
         }
-        
-        void IDataWriter.AsDecimal(FieldDescriptor fs, Decimal dc)
-        {
-            _storage.WriteIntPB(fs.Id);
-            WriteDecimal(dc);
-        }
 
-        void IDataWriter.AsDouble(FieldDescriptor fs, double v)
+        public override void AsDouble(FieldDescriptor fs, double v)
         {
             _storage.WriteIntPB(fs.Id);
             _storage.WriteB64((ulong)Pbs.GetDoubleBits(v));
         }
 
-        void IDataWriter.AsEnum(FieldDescriptor fs, int en) { WriteInt(fs, en); }
-        void IDataWriter.AsInt(FieldDescriptor fs, int v) { WriteInt(fs, v); }
-        void IDataWriter.AsLong(FieldDescriptor fs, long v) { WriteLong(fs, v); }
+        public override void AsEnum(FieldDescriptor fs, int en) { WriteInt(fs, en); }
+        public override void AsInt(FieldDescriptor fs, int v) { WriteInt(fs, v); }
+        public override void AsLong(FieldDescriptor fs, long v) { WriteLong(fs, v); }
 
-        void IDataWriter.AsFloat(FieldDescriptor fs, float v)
+        public override void AsFloat(FieldDescriptor fs, float v)
         {
             _storage.WriteIntPB(fs.Id);
             _storage.WriteB32((uint)Pbs.GetFloatBits(v));
         }
 
-        void IDataWriter.AsMessage(FieldDescriptor fs, Message msg) { WriteMessage(fs, msg); }
-        void IDataWriter.AsString(FieldDescriptor fs, string s) { WriteString(fs, s); }
-        void IDataWriter.AsSi32(FieldDescriptor fs, int i) { WriteInt(fs, (i << 1) ^ (i >> 31)); }
-        void IDataWriter.AsSi64(FieldDescriptor fs, long l) { WriteLong(fs, (l << 1) ^ (l >> 63)); }
+        public override void AsMessage(FieldDescriptor fs, Message msg)
+        {
+            WriteMessage(fs, msg);
+        }
+
+        public override void AsString(FieldDescriptor fs, string s)
+        {
+            WriteString(fs, s);
+        }
+
+        public override void AsSi32(FieldDescriptor fs, int i)
+        {
+            WriteInt(fs, (i << 1) ^ (i >> 31));
+        }
+
+        public override void AsSi64(FieldDescriptor fs, long l)
+        {
+            WriteLong(fs, (l << 1) ^ (l >> 63));
+        }
+
+        public override void IsNull(FieldDescriptor fs) { }
 
         #endregion
     }

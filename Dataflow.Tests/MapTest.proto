@@ -1,0 +1,65 @@
+﻿package Dataflow.Tests;
+
+// Dataflow compiler supports both styles of the comments, but /*..*/ ones are not implemented in the editor.
+
+enum Align { Left = 1; Right = 2; Center = 3; }
+
+message ProtoMessageSample 
+{
+	required int32 id = 1 [default=0];
+	optional string name = 2;
+	optional Align align = 3;
+	repeated double weights = 4;
+}
+
+enum Color
+{
+	RED = 0;
+	GREEN = 1;
+	BLUE = 2;
+}
+
+message Any
+{
+	optional string type_url = 1;
+	optional bytes value = 2;
+}
+
+message KVMap2
+{
+	string name = 1;
+	map<int32, KVMap2> rcmap = 2; 
+}
+
+message KVTest
+{
+	reserved 7 to 8, "abc";
+	string name = 1;
+	map<int64, Any> m1 = 2; 
+	map<string, Color > m2 = 3; 
+	map<uint32, string> m3 = 4; 
+}
+
+message OneOfTest
+{
+	oneof ztest
+	{
+		string str = 1;
+		bytes date = 2;
+		Any msg = 3;
+
+		int32 i32 = 10;
+		bool bol = 11;
+		char cha = 12;
+		sint32 si3 = 14;
+		fixed32 fx3 = 15;
+		uint64 ui64 = 16;
+		sint64 si64 = 17;
+		int64  i64 = 18;
+		double dbl = 19;
+		float flt = 20;
+		datetime dat = 21;
+	}
+
+	string name = 4;
+}

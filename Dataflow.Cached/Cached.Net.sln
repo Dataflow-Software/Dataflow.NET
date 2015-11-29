@@ -1,0 +1,57 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 2012
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Cached.Net", "Cached.Net.csproj", "{4C0EB3FD-F3D5-428E-B356-E20B2760AE3E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dataflow.Caching", "..\..\lib\cache\Dataflow.Caching.csproj", "{46EB1DEC-8E55-4C2F-B507-56E57636A1F6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dataflow.Serialization", "..\..\lib\Dataflow.Serialization\Dataflow.Serialization.csproj", "{7856A5DA-07E3-4295-96CB-C3A51FE574A9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dataflow.Remoting", "..\..\lib\Dataflow.Remoting\Dataflow.Remoting.csproj", "{60DACE8D-914A-4A31-BFCC-7E90E6F21A95}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Dataflow.Tests", "..\..\lib\Dataflow.Tests\Dataflow.Tests.csproj", "{C1EF45EE-850F-4050-B731-E2E347AF51B5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Library|Any CPU = Library|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4C0EB3FD-F3D5-428E-B356-E20B2760AE3E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C0EB3FD-F3D5-428E-B356-E20B2760AE3E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C0EB3FD-F3D5-428E-B356-E20B2760AE3E}.Library|Any CPU.ActiveCfg = Release|Any CPU
+		{4C0EB3FD-F3D5-428E-B356-E20B2760AE3E}.Library|Any CPU.Build.0 = Release|Any CPU
+		{4C0EB3FD-F3D5-428E-B356-E20B2760AE3E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C0EB3FD-F3D5-428E-B356-E20B2760AE3E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{46EB1DEC-8E55-4C2F-B507-56E57636A1F6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{46EB1DEC-8E55-4C2F-B507-56E57636A1F6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{46EB1DEC-8E55-4C2F-B507-56E57636A1F6}.Library|Any CPU.ActiveCfg = Release|Any CPU
+		{46EB1DEC-8E55-4C2F-B507-56E57636A1F6}.Library|Any CPU.Build.0 = Release|Any CPU
+		{46EB1DEC-8E55-4C2F-B507-56E57636A1F6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{46EB1DEC-8E55-4C2F-B507-56E57636A1F6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7856A5DA-07E3-4295-96CB-C3A51FE574A9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7856A5DA-07E3-4295-96CB-C3A51FE574A9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7856A5DA-07E3-4295-96CB-C3A51FE574A9}.Library|Any CPU.ActiveCfg = Release|Any CPU
+		{7856A5DA-07E3-4295-96CB-C3A51FE574A9}.Library|Any CPU.Build.0 = Release|Any CPU
+		{7856A5DA-07E3-4295-96CB-C3A51FE574A9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7856A5DA-07E3-4295-96CB-C3A51FE574A9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{60DACE8D-914A-4A31-BFCC-7E90E6F21A95}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{60DACE8D-914A-4A31-BFCC-7E90E6F21A95}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{60DACE8D-914A-4A31-BFCC-7E90E6F21A95}.Library|Any CPU.ActiveCfg = Release|Any CPU
+		{60DACE8D-914A-4A31-BFCC-7E90E6F21A95}.Library|Any CPU.Build.0 = Release|Any CPU
+		{60DACE8D-914A-4A31-BFCC-7E90E6F21A95}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{60DACE8D-914A-4A31-BFCC-7E90E6F21A95}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C1EF45EE-850F-4050-B731-E2E347AF51B5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C1EF45EE-850F-4050-B731-E2E347AF51B5}.Library|Any CPU.ActiveCfg = Release|Any CPU
+		{C1EF45EE-850F-4050-B731-E2E347AF51B5}.Library|Any CPU.Build.0 = Release|Any CPU
+		{C1EF45EE-850F-4050-B731-E2E347AF51B5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C1EF45EE-850F-4050-B731-E2E347AF51B5}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(MonoDevelopProperties) = preSolution
+		StartupItem = Cached.Net.csproj
+	EndGlobalSection
+EndGlobal

@@ -14,13 +14,13 @@ namespace Dataflow.Serialization
         Unknown = 0, Required = 1, Optional = 2, Repeated = 3, Enum = 4, Map = 5
     }
     
-    // Lists all built-in types supported for message fields. Includes extensions to the Google specification, like Currency, Date and Decimal.
+    // Lists all built-in types supported for message fields. Includes extensions to the Google specification, like Currency, Date.
     public enum DataType
     {
         Int32, Int64, UInt32, UInt64, SInt32, SInt64,
         Bool, Float, Double, Fixed32, Fixed64,
         SFixed32, SFixed64, Bytes, String, Enum,
-        Message, Date, Decimal, Object, Currency, MapEntry, Undefined, LastIndex = Undefined
+        Message, Date, Object, Currency, MapEntry, Undefined, LastIndex = Undefined
     }
 
     // lists all supported .NET types for native DataReader/Writer operations.
@@ -28,10 +28,9 @@ namespace Dataflow.Serialization
     public enum WireType
     {
         None = 0, Int32 = 1, Int64 = 2, Sint32 = 3, Sint64 = 4,
-        String = 5, Bytes = 6, Date = 7, Decimal = 8,
-        Bit32 = 9, Bit64 = 10, Float = 11, Double = 12,
-        Bool = 13, Char = 14, Message = 15, Enum = 16,
-        Currency = 17, MapEntry = 18, MaxValue = 20
+        String = 5, Bytes = 6, Date = 7, Bit32 = 9, Bit64 = 10,
+        Float = 11, Double = 12, Bool = 13, Char = 14, Message = 15,
+        Enum = 16, Currency = 17, MapEntry = 18, MaxValue = 20
     }
 
     // list of stream data formats implemented by streaming RPC channels.
@@ -140,7 +139,7 @@ namespace Dataflow.Serialization
     }
 
     [StructLayout(LayoutKind.Explicit)]
-    public struct ValueStorage
+    public struct ValueStore
     {
         [FieldOffset(0)]
         public bool _bool;
@@ -154,6 +153,8 @@ namespace Dataflow.Serialization
         public double _double;
         [FieldOffset(0)]
         public byte _byte;
+        [FieldOffset(0)]
+        public char _char;
     }
 
     // Exception classes for Dataflow libraries.
@@ -161,19 +162,16 @@ namespace Dataflow.Serialization
     {
         public DataflowException(string s) : base(s) { }
         public static void Throw(string msg) { throw new DataflowException(msg); }
-        public static void WriteOnce(string s) { throw new DataflowException("can't change the value " + s); }
+        //public static void WriteOnce(string s) { throw new DataflowException("can't change the value " + s); }
     }
 
     public class SerializationException : DataflowException
     {
         public SerializationException(string s) : base(s) { }
-        public static void NotImplemented(WireType wt)
-        {
-            throw new DataflowException("not supported: " + wt.ToString());
-        }
+        //public static void NotImplemented(WireType wt) { throw new DataflowException("not supported: " + wt.ToString()); }
     }
 
-    // efficient long-int based type for currency values manipulations.
+    // efficient int64 based type for currency values manipulations (*10000 scaled).
     public struct Currency
     {
         public const int Scale = 10000;
@@ -181,7 +179,6 @@ namespace Dataflow.Serialization
         private long _value;
         public Currency(long i) { _value = i; }
         public Currency(long u, int c) { _value = u * Scale + c; }
-        // non-PCL method : public Currency(Decimal i) { _value = Decimal.ToOACurrency(i); }
         public Currency(double d) { _value = (long)(d * Scale); }
         public long Cents { get { return _value % Scale; } }
         public long Units { get { return _value / Scale; } set { _value = value * Scale; } }
@@ -208,7 +205,6 @@ namespace Dataflow.Serialization
             return (obj is Currency) && this == (Currency)obj;
         }
 
-        // non-PCL method : public decimal ToDecimal() { return Decimal.FromOACurrency(_value); }
         public double ToDouble() { return (double)_value / Scale; }
         public int ToInt() { return (int)(_value / Scale); }
 
@@ -280,13 +276,13 @@ namespace Dataflow.Serialization
         }
         public static int i64(long val)
         {
-            var i = (ulong)val;
-            if ((i >> 31) == 0) return i32((int)val);
-            if (i < 0x800000000) return 5;
-            if (i < 0x40000000000) return 6;
-            if (i < 0x2000000000000) return 7;
-            if (i < ((ulong)1 << 56)) return 8;
-            return i < ((ulong)1 << 63) ? 9 : 10;
+            if (val < 0) return 10;
+            if (val <= 0xFFFFFFFF) return i32((int)val);
+            var i = (int)(val >> 31);
+            if (i < 0x80) return 5;
+            if (i < 0x4000) return 6;
+            if (i < 0x200000) return 7;
+            return i < 0x10000000 ? 8 : 9;
         }
         public static int sign(int v) { return (v << 1) ^ (v >> 32); }
         public static long signl(long v) { return (v << 1) ^ (v >> 63); }
@@ -315,21 +311,6 @@ namespace Dataflow.Serialization
         }
         public static int cur(Currency cy) { return i64((long)cy); }
         public static int dat(DateTime dt) { return si64(DateToMsecs(dt)); }
-        public static int dec(Decimal dt)
-        {
-            return dec2(Decimal.GetBits(dt));
-        }
-        public static int dec2(int[] di)
-        {
-            int si = di[3], sg = si < 0 ? 1 : 0;
-            if (si == 0 && di[0] == 0 && di[1] == 0 && di[2] == 0) return 1;
-            sg = sg | ((byte)(si >> 16) << 1);
-            var sz = i32(di[0]);
-            var li = (long)di[2]; li = li << 32;
-            sz += i64(li | (uint)di[1]);
-            sz += i32(sg);
-            return sz + 1;
-        }
 
         public static DateTime DtEpoch = new DateTime(1970, 1, 1);
         public static long DateToMsecs(DateTime dt)
@@ -360,9 +341,9 @@ namespace Dataflow.Serialization
         }
 
         public static int GetWireId(int id, WireType wt) { return (id << 3) | wt.WireFormat(); }
-        public static int WireFormat(this WireType wt)
+        public static int WireFormat(this WireType wtype)
         {
-            switch (wt)
+            switch (wtype)
             {
                 case WireType.Int32:
                 case WireType.Int64:
@@ -376,7 +357,6 @@ namespace Dataflow.Serialization
                     return iVarInt;
                 case WireType.String:
                 case WireType.Bytes:
-                case WireType.Decimal:
                 case WireType.Message:
                 case WireType.MapEntry:
                     return iString;
@@ -420,16 +400,8 @@ namespace Dataflow.Serialization
         }
         public static long GetDoubleBits(double dv) { return BitConverter.DoubleToInt64Bits(dv); }
         public static double SetDoubleBits(long lv) { return BitConverter.Int64BitsToDouble(lv); }
-        public static int GetFloatBits(float dv)
-        {
-            var bt = BitConverter.GetBytes(dv);
-            int lv;
-            if (BitConverter.IsLittleEndian)
-                lv = (bt[3] << 24) | (bt[2] << 16) | (bt[1] << 8) | bt[0];
-            else lv = (bt[0] << 24) | (bt[1] << 16) | (bt[2] << 8) | bt[3];
-            return lv;
-        }
-        public static float SetFloatBits(int iv) { return BitConverter.ToSingle(BitConverter.GetBytes(iv), 0); }
+        public static int GetFloatBits(float sv) { var x = new ValueStore() { _single = sv }; return x._int32; }
+        public static float SetFloatBits(int iv) { var x = new ValueStore() { _int32 = iv }; return x._single; }
 
         // Returns text name for PB encoding markers.
         public static string GetWireTypeName(int id)
@@ -535,7 +507,6 @@ namespace Dataflow.Serialization
         // reads value from data reader into the message field. 
         [EditorBrowsable(EditorBrowsableState.Never)]
         public virtual void Get(FieldDescriptor fs, IDataReader dr) { }
-        public virtual void Get(FieldDescriptor fs, TDataReader dr) { }
         // returns true if all required fields in the message and all embedded messages are set, false otherwise.
         public virtual bool IsInitialized() { return true; }
         // fast self-factory implementation.
@@ -545,61 +516,55 @@ namespace Dataflow.Serialization
         public virtual void Put(IDataWriter dw) { }
         // writes field value the data writer (or explicitly calls IsNull).
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public virtual void PutField(TDataWriter dw, FieldDescriptor fs) { }
+        public virtual void PutField(IDataWriter dw, FieldDescriptor fs) { }
 
         // public interface methods.
 
         [EditorBrowsable(EditorBrowsableState.Never)]
-        public int ByteSize { get { var sz = _memoized_size; return (sz > 0) ? sz : GetSerializedSize(); } }
-        
-        public void MergeFrom(Message data)
-        {
-            new MessageCopier().Append(this, data);
-        }
+        public int SerializedSize { get { var sz = _memoized_size; return (sz > 0) ? sz : GetSerializedSize(); } }
         
         public void MergeFrom(byte[] data)
         {
             if (data == null || data.Length == 0) return;
-            new PBStreamReader(data, 0, data.Length).Read(this, data.Length);
+            new PBDataReader(data, 0, data.Length).Read(this, data.Length);
         }
 
         public void MergeFrom(string data)
         {
             if (string.IsNullOrEmpty(data)) return;
-            new JSStreamReader(data, 0, data.Length).Read(this);
+            new JSDataReader(data, 0, data.Length).Read(this);
         }
 
         public void WriteTo(System.IO.Stream os, DataEncoding encoding)
         {
-            var dts = new DataStorage();
-            switch (encoding)
+            using (var dts = new DataStorage())
             {
-                case DataEncoding.Proto:
-                    var pbw = new PBStreamWriter(dts);
-                    pbw.Append(this);
-                    pbw.Flush();
-                    break;
-                case DataEncoding.Json:
-                    var jsw = new JSStreamWriter(dts);
-                    jsw.Append(this);
-                    jsw.Flush();
-                    break;
-                default: throw new ArgumentException();
+                var sw = new StorageWriter(dts);
+                switch (encoding)
+                {
+                    case DataEncoding.Proto:
+                        new PBDataWriter(sw).AppendMessage(this, GetDescriptor());
+                        break;
+                    case DataEncoding.Json:
+                        new JSDataWriter(sw).AppendMessage(this, GetDescriptor());
+                        break;
+                    default: throw new ArgumentException("data encoding");
+                }
+                sw.ToStream(os);
             }
-            dts.ToStream(os);
         }
 
         public byte[] ToByteArray()
         {
             var bytes = GetSerializedSize();
             var buffer = new byte[bytes];
-            Put(new PBStreamWriter(buffer, 0, bytes));
+            Put(new PBDataWriter(buffer, 0, bytes));
             return buffer;
         }
 
         public byte[] ToByteArray(byte[] bt, int offset, int count)
         {
-            Put(new PBStreamWriter(bt, offset, count));
+            Put(new PBDataWriter(bt, offset, count));
             return bt;
         }
 
@@ -610,20 +575,10 @@ namespace Dataflow.Serialization
 
         public string ToString(bool decorate)
         {
-            string jsonString = null;
-            var dts = new DataStorage();
-            try
+            using (var dts = new DataStorage())
             {
-                var jsw = new JSStreamWriter(dts, decorate);
-                jsw.Append(this);
-                jsw.Flush();
-                jsonString = dts.ToString();
+                return new JSDataWriter(new StorageWriter(dts), decorate).AppendMessage(this, GetDescriptor()).Storage.ToString();
             }
-            finally
-            {
-                dts.Dispose();
-            }
-            return jsonString;
         }
 
         [EditorBrowsable(EditorBrowsableState.Never)]
@@ -634,21 +589,21 @@ namespace Dataflow.Serialization
         // support for Get<FName> method in genrated maps.
         protected MapEntry GetMapEntry(MapEntry[] map, long key, MessageDescriptor ds)
         {
-            foreach (var kv in map) if (kv.lk == key) return kv;
-            if (ds != null) return new MapEntry(ds) { lk = key };
+            foreach (var kv in map) if (kv.lkey == key) return kv;
+            if (ds != null) return new MapEntry(ds, key);
             throw new DataflowException("key not found in map: " + key);
         }
 
         protected MapEntry GetMapEntry(MapEntry[] map, string key, MessageDescriptor ds)
         {
-            foreach (var kv in map) if (kv.sk == key) return kv;
-            if (ds != null) return new MapEntry(ds) { sk = key };
+            foreach (var kv in map) if (kv.skey == key) return kv;
+            if (ds != null) return new MapEntry(ds, key);
             throw new DataflowException("key not found in map: " + key);
         }
 
         protected static MessageDescriptor _init_ds_(MessageDescriptor ds, Message factory, params FieldDescriptor[] fs)
         {
-            return ds.Init(factory, fs);
+            return ds.Setup(factory, fs);
         }
 
         protected static MessageDescriptor _map_ds_(int key, int val, MessageDescriptor vs = null)
@@ -745,7 +700,7 @@ namespace Dataflow.Serialization
             RecalcIndex();
         }
 
-        public MessageDescriptor Init(Message factory, params FieldDescriptor[] fs)
+        public MessageDescriptor Setup(Message factory, params FieldDescriptor[] fs)
         {
             if (_factory != null)
                 throw new InvalidOperationException("init once");
@@ -847,6 +802,7 @@ namespace Dataflow.Serialization
         private readonly EnumFieldDescriptor[] _map;
         private readonly int _lowId, _maxId;
         protected EnumDescriptor() : base(null, 0, null) { }
+
         public EnumDescriptor(string name, params EnumFieldDescriptor[] fs) : base(name, 0, null)
         {
             Name = name;
@@ -865,6 +821,7 @@ namespace Dataflow.Serialization
             _map = new EnumFieldDescriptor[_maxId - _lowId + 1];
             foreach (var ds in fs) _map[ds.Id - _lowId] = ds;
         }
+
         public FieldDescriptor GetById(int id)
         {
             if (_map != null)
@@ -901,31 +858,7 @@ namespace Dataflow.Serialization
 
     // (de)Serialization interface definitions.
 
-    public interface IDataReader
-    {
-        // value types deserializers.
-        int AsBit32();
-        long AsBit64();
-        bool AsBool();
-        byte[] AsBytes();
-        char AsChar();
-        Currency AsCurrency();
-        DateTime AsDate();
-        decimal AsDecimal();
-        double AsDouble();
-        int AsEnum(EnumDescriptor es);
-        int AsInt();
-        long AsLong();
-        string AsString();
-        float AsFloat();
-        // special methods are needed due to Protocol Buffers signed int format optimizations.
-        int AsSi32();
-        long AsSi64();
-        // message types deserializer, requires instance to read into.
-        void AsMessage(Message msg, FieldDescriptor fs);
-    }
-
-    public abstract class TDataReader
+    public abstract class IDataReader
     {
         // value types deserializers.
         public abstract int AsInt();
@@ -936,7 +869,6 @@ namespace Dataflow.Serialization
         public abstract char AsChar();
         public abstract Currency AsCurrency();
         public abstract DateTime AsDate();
-        public abstract decimal AsDecimal();
         public abstract double AsDouble();
         public abstract int AsEnum(EnumDescriptor es);
         public virtual float AsFloat() { return (float)AsDouble(); }
@@ -949,7 +881,7 @@ namespace Dataflow.Serialization
         public abstract void AsMessage(Message msg, FieldDescriptor fs);
     }
 
-    public abstract class TDataWriter
+    public abstract class IDataWriter
     {
         public abstract void IsNull(FieldDescriptor fs);
         // value types serializers.
@@ -958,7 +890,6 @@ namespace Dataflow.Serialization
         public abstract void AsLong(FieldDescriptor fs, long l);
         public abstract void AsBytes(FieldDescriptor fs, byte[] bt);
         public abstract void AsDate(FieldDescriptor fs, DateTime dt);
-        public abstract void AsDecimal(FieldDescriptor fs, decimal d);
         public abstract void AsDouble(FieldDescriptor fs, double d);
         public abstract void AsBool(FieldDescriptor fs, bool b);
         public abstract void AsChar(FieldDescriptor fs, char ch);
@@ -975,219 +906,25 @@ namespace Dataflow.Serialization
         public abstract void AsMessage(FieldDescriptor fs, Message msg);
     }
 
-    public interface IDataWriter
-    {
-        // value types serializers.
-        void AsString(FieldDescriptor fs, string s);
-        void AsInt(FieldDescriptor fs, int i);
-        void AsLong(FieldDescriptor fs, long l);
-        void AsSi32(FieldDescriptor fs, int i);
-        void AsSi64(FieldDescriptor fs, long l);
-        void AsBytes(FieldDescriptor fs, byte[] bt);
-        void AsDate(FieldDescriptor fs, DateTime dt);
-        void AsDecimal(FieldDescriptor fs, decimal d);
-        void AsDouble(FieldDescriptor fs, double d);
-        void AsBool(FieldDescriptor fs, bool b);
-        void AsChar(FieldDescriptor fs, char ch);
-        void AsBit32(FieldDescriptor fs, int i);
-        void AsBit64(FieldDescriptor fs, long l);
-        void AsEnum(FieldDescriptor fs, int en);
-        void AsFloat(FieldDescriptor fs, float f);
-        void AsCurrency(FieldDescriptor fs, Currency cy);
-        // repeated fields serializer, "expands" inside based on field data type.
-        void AsRepeated(FieldDescriptor fs, Array data);
-        // embedded messages serializer.
-        void AsMessage(FieldDescriptor fs, Message msg);
-    }
-
     // Base classes for PB/JSON/... (de)serializers.
-
-    public abstract class MessageSerializer
-    {
-        protected readonly StorageWriter _storage;
-
-        protected MessageSerializer(byte[] bts, int pos, int count)
-        {
-            _storage = new StorageWriter(bts, pos, count);
-        }
-
-        protected MessageSerializer(DataStorage dts, int estimate)
-        {
-            _storage = new StorageWriter(dts, estimate);
-        }
-
-        protected abstract void AppendMessage(Message msg, MessageDescriptor ci);
-
-        public void Append(Message msg)
-        {
-            if (msg != null) 
-                AppendMessage(msg, msg.GetDescriptor());
-        }
-
-        public void Flush()
-        {
-            _storage.Flush();
-        }
-
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public override bool Equals(object obj) { return base.Equals(obj); }
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public override int GetHashCode() { return base.GetHashCode(); }
-    }
-
-    public abstract class MessageDeserializer
-    {
-        protected readonly StorageReader _storage;
-
-        protected MessageDeserializer(StorageReader storage)
-        {
-            _storage = storage;
-        }
-
-        public abstract void Read(Message message, int size);
-
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public override bool Equals(object obj) { return base.Equals(obj); }
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public override int GetHashCode() { return base.GetHashCode(); }
-    }
-
-    // implements Message.MergeFrom() logic.
-    internal sealed class MessageCopier : IDataWriter
-    {
-        private readonly CopyReader _rdr;
-        private Message _cur;
-        private object _x;
-        private long _v;
-
-        public MessageCopier()
-        {
-            _rdr = new CopyReader { Data = this };
-        }
-
-        public void Append(Message dst, Message src)
-        {
-            _cur = dst;
-            src.Put(this);
-        }
-
-        void IDataWriter.AsBit64(FieldDescriptor fs, long l) { _v = l; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsBool(FieldDescriptor fs, bool b) { _v = b ? 1 : 0; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsBytes(FieldDescriptor fs, byte[] bt) { _x = bt; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsDate(FieldDescriptor fs, DateTime dt) { _v = dt.Ticks; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsDecimal(FieldDescriptor fs, decimal d) { _x = d; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsDouble(FieldDescriptor fs, double d) { _v = (long)Pbs.GetDoubleBits(d); _cur.Get(fs, _rdr); }
-        void IDataWriter.AsFloat(FieldDescriptor fs, float f) { _v = Pbs.GetFloatBits(f); _cur.Get(fs, _rdr); }
-        void IDataWriter.AsInt(FieldDescriptor fs, int i) { _v = i; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsLong(FieldDescriptor fs, long l) { _v = l; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsString(FieldDescriptor fs, string s) { _x = s; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsCurrency(FieldDescriptor fs, Currency cy) { _v = cy.Value; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsChar(FieldDescriptor fs, char ch) { _v = ch; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsBit32(FieldDescriptor fs, int i) { _v = i; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsEnum(FieldDescriptor fs, int en) { _v = en; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsSi32(FieldDescriptor fs, int i) { _v = i; _cur.Get(fs, _rdr); }
-        void IDataWriter.AsSi64(FieldDescriptor fs, long l) { _v = l; _cur.Get(fs, _rdr); }
-
-        void IDataWriter.AsMessage(FieldDescriptor fs, Message msg)
-        {
-            var prev = _cur;
-            _cur.Get(fs, _rdr);
-            msg.Put(this);
-            _cur = prev;
-        }
-
-        void IDataWriter.AsRepeated(FieldDescriptor fs, Array data)
-        {
-            throw new NotImplementedException();
-        }
-
-        internal sealed class CopyReader : IDataReader
-        {
-            public MessageCopier Data;
-            public long AsBit64() { return Data._v; }
-            public bool AsBool() { return Data._v != 0; }
-            public byte[] AsBytes() { return Data._x as byte[]; }
-            public DateTime AsDate() { return new DateTime(Data._v); }
-            public decimal AsDecimal() { return (decimal)Data._x; }
-            public double AsDouble() { return Pbs.SetDoubleBits(Data._v); }
-            public float AsFloat() { return Pbs.SetFloatBits((int)Data._v); }
-            public int AsInt() { return (int)Data._v; }
-            public long AsLong() { return Data._v; }
-            public void AsMessage(Message msg, FieldDescriptor fs) { Data._cur = msg; }
-            public string AsString() { return Data._x as string; }
-            public int AsBit32() { return (int)Data._v; }
-            public char AsChar() { return (char)Data._v; }
-            public Currency AsCurrency() { return new Currency(Data._v); }
-            public int AsEnum(EnumDescriptor es) { return (int)Data._v; }
-            public int AsSi32() { return (int)Data._v; }
-            public long AsSi64() { return Data._v; }
-        }
-    }
-
-    // converts Message content to object[] format.
-    public sealed class ObjectWriter : IDataWriter
-    {
-        private object[] Data;
-
-        public object[] Write(Message msg) 
-        {
-            Data = new object[msg.GetDescriptor().FieldCount];
-            msg.Put(this);
-            return Data;
-        }
-
-        void IDataWriter.AsBit32(FieldDescriptor fs, int iv) { Data[fs.Pos] = iv; }
-        void IDataWriter.AsBit64(FieldDescriptor fs, long lv) { Data[fs.Pos] = lv; }
-        void IDataWriter.AsBool(FieldDescriptor fs, bool bo) { Data[fs.Pos] = bo; }
-        void IDataWriter.AsChar(FieldDescriptor fs, char ch) { Data[fs.Pos] = ch; }
-        void IDataWriter.AsBytes(FieldDescriptor fs, byte[] bt) { Data[fs.Pos] = bt; }
-        void IDataWriter.AsDate(FieldDescriptor fs, DateTime dt) { Data[fs.Pos] = dt; }
-        void IDataWriter.AsDecimal(FieldDescriptor fs, decimal de) { Data[fs.Pos] = de; }
-        void IDataWriter.AsDouble(FieldDescriptor fs, double dl) { Data[fs.Pos] = dl; }
-        void IDataWriter.AsFloat(FieldDescriptor fs, float dl) { Data[fs.Pos] = dl; }
-        void IDataWriter.AsInt(FieldDescriptor fs, int iv) { Data[fs.Pos] = iv; }
-        void IDataWriter.AsLong(FieldDescriptor fs, long lv) { Data[fs.Pos] = lv; }
-        void IDataWriter.AsString(FieldDescriptor fs, string s) { Data[fs.Pos] = s; }
-        void IDataWriter.AsCurrency(FieldDescriptor fs, Currency cy) { Data[fs.Pos] = cy; }
-        void IDataWriter.AsEnum(FieldDescriptor fs, int en) { Data[fs.Pos] = en; }
-        void IDataWriter.AsSi32(FieldDescriptor fs, int i) { Data[fs.Pos] = i; }
-        void IDataWriter.AsSi64(FieldDescriptor fs, long l) { Data[fs.Pos] = l; }
-        void IDataWriter.AsMessage(FieldDescriptor fs, Message msg)
-        {
-            var prev = Data;
-            var ci = fs.MessageType;
-            Data = new object[ci.FieldCount];
-            msg.Put(this);
-            if (fs == null) return;
-            prev[fs.Pos] = Data;
-            Data = prev;
-        }
-        void IDataWriter.AsRepeated(FieldDescriptor fs, Array data)
-        {
-            throw new NotImplementedException();
-        }
-    }
 
     public class StringReader : IDataReader
     {
         public string Value { get; set; }
-        public long AsBit64() { return Text.ParseHex(Value, 0, Value.Length); }
-        public bool AsBool() { return bool.Parse(Value); }
-        public byte[] AsBytes() { return Convert.FromBase64String(Value); }
-        public Currency AsCurrency() { return new Currency(Double.Parse(Value)); }
-        public DateTime AsDate() { return DateTime.ParseExact(Value, Text.ISODateFormat, null); }
-        public decimal AsDecimal() { return Decimal.Parse(Value); }
-        public double AsDouble() { return double.Parse(Value); }
-        public int AsInt() { return int.Parse(Value); }
-        public long AsLong() { return long.Parse(Value); }
-        public void AsMessage(Message msg, FieldDescriptor fs) { throw new NotSupportedException(); }
-        public string AsString() { return Value; }
-        public int AsBit32() { return AsInt(); }
-        public char AsChar() { return Value[0]; }
-        public int AsEnum(EnumDescriptor es) { throw new NotImplementedException(); }
-        public float AsFloat() { return (float)AsDouble(); }
-        public int AsSi32() { return AsInt(); }
-        public long AsSi64() { return AsLong(); }
+        public override long AsBit64() { return Text.ParseHex(Value, 0, Value.Length); }
+        public override bool AsBool() { return bool.Parse(Value); }
+        public override byte[] AsBytes() { return Convert.FromBase64String(Value); }
+        public override Currency AsCurrency() { return new Currency(Double.Parse(Value)); }
+        public override DateTime AsDate() { return DateTime.ParseExact(Value, Text.ISODateFormat, null); }
+        public override double AsDouble() { return double.Parse(Value); }
+        public override int AsInt() { return int.Parse(Value); }
+        public override long AsLong() { return long.Parse(Value); }
+        public override void AsMessage(Message msg, FieldDescriptor fs) { throw new NotSupportedException(); }
+        public override string AsString() { return Value; }
+        public override int AsBit32() { return AsInt(); }
+        public override char AsChar() { return Value[0]; }
+        public override int AsEnum(EnumDescriptor es) { throw new NotImplementedException(); }
+        public override float AsFloat() { return (float)AsDouble(); }
     }
 
     // base class for messages with single repeated message field.
@@ -1256,13 +993,17 @@ namespace Dataflow.Serialization
 
     public class MapEntry : Message
     {
-        public MessageDescriptor _desc;
-        
-        public long lk, lv;
-        public string sk;
+        private MessageDescriptor _desc;
+        private ValueStore _lv, _lk;
+
+        public string skey;
         public object ov;
+        public long lkey { get { return _lk._int64; } set { _lk._int64 = value; } }
+        public ValueStore lval { get { return _lv; } }
 
         public MapEntry(MessageDescriptor ds) { _desc = ds; }
+        public MapEntry(MessageDescriptor ds, long lk) { _desc = ds; _lk._int64 = lk; }
+        public MapEntry(MessageDescriptor ds, string sk) { _desc = ds; skey = sk; }
 
         // new/clear/etc not needed, get-size will be done by compiler up-level
 
@@ -1270,37 +1011,36 @@ namespace Dataflow.Serialization
 
         internal void PutKey(IDataWriter dw)
         {
-            PutValueEx(dw, _desc.Fields[0], lk, false);
+            PutValueEx(dw, _desc.Fields[0], _lk, skey);
         }
 
         internal void PutValue(IDataWriter dw)
         {
-            PutValueEx(dw, _desc.Fields[1], lv, true);
+            PutValueEx(dw, _desc.Fields[1], _lv, ov);
         }
 
-        protected void PutValueEx(IDataWriter dw, FieldDescriptor fs, long lval, bool is_value)
+        protected void PutValueEx(IDataWriter dw, FieldDescriptor fs, ValueStore lval, object oval)
         {
             switch (fs.DataType)
             {
-                case WireType.String: dw.AsString(fs, is_value ? ov as string : sk); break;
-                case WireType.Message: dw.AsMessage(fs, ov as Message); break;
-                case WireType.Bytes: dw.AsBytes(fs, ov as byte[]); break;
-                case WireType.Decimal: dw.AsDecimal(fs, (decimal)ov); break;
+                case WireType.String: dw.AsString(fs, oval.ToString()); break;
+                case WireType.Message: dw.AsMessage(fs, oval as Message); break;
+                case WireType.Bytes: dw.AsBytes(fs, oval as byte[]); break;
 
-                case WireType.Int32: dw.AsInt(fs, (int)lval); break;
-                case WireType.Bit32: dw.AsBit32(fs, (int)lval); break;
-                case WireType.Bool: dw.AsBool(fs, lval == 0 ? false : true); break;
-                case WireType.Char: dw.AsChar(fs, (char)lval); break;
-                case WireType.Sint32: dw.AsSi32(fs, (int)lval); break;
-                case WireType.Enum: dw.AsEnum(fs, (int)lval); break;
+                case WireType.Int32: dw.AsInt(fs, lval._int32); break;
+                case WireType.Bit32: dw.AsBit32(fs, lval._int32); break;
+                case WireType.Bool: dw.AsBool(fs, lval._bool); break;
+                case WireType.Char: dw.AsChar(fs, lval._char); break;
+                case WireType.Sint32: dw.AsSi32(fs, lval._int32); break;
+                case WireType.Enum: dw.AsEnum(fs, lval._int32); break;
 
-                case WireType.Bit64: dw.AsBit64(fs, lval); break;
-                case WireType.Sint64: dw.AsSi64(fs, lval); break;
-                case WireType.Int64: dw.AsLong(fs, lval); break;
-                case WireType.Currency: dw.AsCurrency(fs, new Currency(lval)); break;
-                case WireType.Float: dw.AsFloat(fs, (float)Pbs.SetDoubleBits(lv)); break;
-                case WireType.Double: dw.AsDouble(fs, Pbs.SetDoubleBits(lv)); break;
-                case WireType.Date: dw.AsDate(fs, new DateTime(lv)); break;
+                case WireType.Bit64: dw.AsBit64(fs, lval._int64); break;
+                case WireType.Sint64: dw.AsSi64(fs, lval._int64); break;
+                case WireType.Int64: dw.AsLong(fs, lval._int64); break;
+                case WireType.Currency: dw.AsCurrency(fs, new Currency(lval._int64)); break;
+                case WireType.Float: dw.AsFloat(fs, lval._single); break;
+                case WireType.Double: dw.AsDouble(fs, lval._double); break;
+                case WireType.Date: dw.AsDate(fs, new DateTime(lval._int64)); break;
 
                 default: throw new SerializationException("map write - key type" );
             }
@@ -1312,7 +1052,7 @@ namespace Dataflow.Serialization
             {
                 case WireType.String: 
                     var s = dr.AsString();
-                    if (is_value) ov = s; else sk = s;
+                    if (is_value) ov = s; else skey = s;
                     break;
                 case WireType.Bytes:
                     if (!is_value) goto default;
@@ -1322,8 +1062,6 @@ namespace Dataflow.Serialization
                     var msg = fs.MessageType.New();
                     dr.AsMessage(msg, fs);
                     ov = msg; break;
-                case WireType.Decimal: 
-                    ov = dr.AsDecimal(); break;
 
                 case WireType.Bool: return dr.AsBool() ? 1 : 0;
                 case WireType.Bit32: return dr.AsBit32();
@@ -1353,7 +1091,6 @@ namespace Dataflow.Serialization
                 case WireType.String: return Pbs.str((string)ov);
                 case WireType.Bytes: return Pbs.bts((byte[])ov);
                 case WireType.Message: return Pbs.msg((Message)ov);
-                case WireType.Decimal: return Pbs.dec((decimal)ov);
                 case WireType.Bool: return 1;
                 case WireType.Float:
                 case WireType.Bit32: return 4;
@@ -1371,29 +1108,26 @@ namespace Dataflow.Serialization
             }
         }
 
-        public override int GetHashCode()
-        {
-            return base.GetHashCode();
-        }
-
+        public override int GetHashCode() { return base.GetHashCode(); }
         public override bool Equals(object obj)
         {
             var test = obj as MapEntry;
-            if (sk != null)
-                if (sk != test.sk) return false; else { }
-            else if (lk != test.lk) return false;
+            if (skey != null)
+                if (skey != test.skey) return false; else { }
+            else if (lkey != test.lkey) return false;
             if (ov == null)
-                if (lv != test.lv) return false;
+                if (lval._int64 != test.lval._int64) return false; else { }
+            else
+            {
+                var msg = ov as Message;
+                if (msg != null)
+                    if (!msg.Equals(test.ov)) return false; else { }
                 else
                 {
-                    var msg = ov as Message;
-                    if (msg != null)
-                        if (!msg.Equals(test.ov)) return false; else { }
-                    else
-                    {
-                        //TODO.
-                    }
+                    var s1 = ov.ToString(); var s2 = test.ov.ToString();
+                    if (s1 != s2) return false;
                 }
+            }
             return true;
         }
 
@@ -1407,15 +1141,16 @@ namespace Dataflow.Serialization
         {
             var fs = _desc.Fields;
             var sz = 2;
-            if (sk != null) sz += Pbs.str(sk); else sz += GetSize(fs[0].DataType, lk);
-            sz += GetSize(fs[1].DataType, lv);
+            if (skey != null) sz += Pbs.str(skey);
+            else sz += GetSize(fs[0].DataType, _lk._int64);
+            sz += GetSize(fs[1].DataType, _lv._int64);
             return _memoized_size = sz;
         }
 
         public override void Get(FieldDescriptor fs, IDataReader dr)
         {
-            if (fs.Pos == 0) lk = GetValue(dr, fs, false);
-            else lv = GetValue(dr, fs, true);
+            if (fs.Pos == 0) _lk._int64 = GetValue(dr, fs, false);
+            else _lv._int64 = GetValue(dr, fs, true);
         }
     }
 

@@ -1,0 +1,14 @@
+﻿<Properties>
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Release" />
+  <MonoDevelop.Ide.Workbench ActiveDocument="..\..\lib\Dataflow.Serialization\Dynamic.cs">
+    <Files>
+      <File FileName="..\..\lib\Dataflow.Tests\Messages.pb.cs" Line="27" Column="63" />
+      <File FileName="..\..\lib\Dataflow.Tests\Messages.proto" Line="37" Column="27" />
+      <File FileName="..\..\lib\Dataflow.Serialization\Dynamic.cs" Line="22" Column="59" />
+    </Files>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore />
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+</Properties>

@@ -38,8 +38,6 @@ message DateTimeValue { datetime Value = 1; }
 
 message CurrencyValue {	currency Value = 1; }
 
-message DecimalValue { decimal Value = 1; }
-
 // primitive arrays
 
 //message BoolArray { repeated bool a = 1; }
@@ -69,7 +67,5 @@ message DecimalValue { decimal Value = 1; }
 //message DateArray { repeated datetime a = 1; }
 
 //message CurrencyArray { repeated currency a = 1; }
-
-//message DecimalArray { repeated decimal item = 1; }
 
 // end of built-in types.proto

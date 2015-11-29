@@ -1,0 +1,56 @@
+﻿package Dataflow.Memcached;
+
+// messages definitions for memcached RPC protocol and configuration.
+
+message CachedRequest 
+{
+	optional int32 Opcode = 1;
+	optional bytes Data = 2;
+	optional bytes Key = 3;
+	optional uint32 Expires = 4;
+	optional uint64 Flags = 5;
+	optional uint64 Cas = 6;
+	optional uint64 Delta = 7;
+}
+
+message CachedResponse 
+{
+	optional int32 Status = 1;
+	optional bytes Data = 2;
+	optional uint32 Expires = 3;
+	optional uint32 Flags = 4;
+	optional uint64 Cas = 5;
+	optional uint64 Counter = 6;
+}
+
+message CachedStats 
+{
+	optional uint32 Uptime = 1;			// uptime of the cache, in seconds
+	optional uint64 CurrentItems = 2;	// number of "live" keys in the cache
+	optional uint64 CurrentBytes = 3;	// space consumed out of cache pool
+	optional uint64 TotalMemory = 4;	// total memory avilable
+	optional uint64 Evictions = 5;		// number of evictions since last flush
+	optional uint64 Requests = 6;		// number of requests s.l.f(since last flush).
+	optional uint64 GetHits = 7;		// number of get hits s.l.f
+	optional uint64 Updates = 8;		// number of key updates(set/add/replace) s.l.f
+	optional uint64 Misses = 9;			// number of get misses s.l.f
+	optional uint64 BytesOut = 10;		// network bytes out
+	optional uint64 BytesIn = 11;		// network bytes in
+	optional uint64 BpsIn = 12;			// bytes per second in
+	optional uint64 BpsOut = 13;		// bytes per second out
+	optional uint64 Rps = 14;			// requests per second
+	optional string Address = 15;		// address of the server
+}
+
+message CachedConfiguration 
+{
+	optional uint32 AllocPageSize = 1 [default=8];
+    optional uint32 CacheSize = 2 [default=64];
+    optional bool ReserveMemory = 3 [default=true];
+	optional bool UseLargePages = 4 [default=true];
+    optional uint32 HashTableSize = 5 [default=65536];
+    optional string Address = 6;
+    optional string Name = 7;
+}
+
+// end of memcached.messages
